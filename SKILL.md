@@ -53,12 +53,14 @@ Use this skill whenever the user:
 
 The user's Gene2AI API key is available as environment variable `GENE2AI_API_KEY`.
 
-API keys are **user-scoped** — a single key grants access to all your health data (genomic results, parsed documents, and self-reported metrics).
+API keys are **profile-scoped** — each key is bound to a specific health profile (e.g., "Self", "Mom", "Dad"). When you use this key, all data queries automatically return data for the bound profile only. This prevents accidentally mixing health data across family members.
+
+> **Important:** Each key operates on one profile only. If the user manages health data for multiple family members, they should generate a separate key for each profile. The `?profileId=` query parameter can override the key’s default profile for advanced use cases.
 
 If `GENE2AI_API_KEY` is not set, guide the user to:
 1. Visit https://gene2.ai and log in (or create an account)
 2. Go to the **API Keys** page (https://gene2.ai/api-keys)
-3. Click **Generate New Key**
+3. Click **Generate New Key** and select the health profile this key should access
 4. Copy the generated token and configure it in OpenClaw:
 
 ```json
