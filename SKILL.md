@@ -78,7 +78,66 @@ If `GENE2AI_API_KEY` is not set, guide the user to:
 
 ---
 
-## Part 1: Querying All Health Data (Recommended)
+## Part 1: Querying Health Data
+
+### Health Profile (Recommended Starting Point)
+
+```bash
+curl -s "https://gene2.ai/api/v1/health-data/profile" \
+  -H "Authorization: Bearer $GENE2AI_API_KEY"
+```
+
+Returns a **compact, conclusions-only health profile** (~2-4KB). This is the recommended first call for any agent session. The response contains:
+
+- **APOE genotype** conclusion (e.g., "APOE ε3/ε4 — Increased risk")
+- **CYP450 metabolizer status** for each gene (e.g., "CYP2D6: Normal Metabolizer") with affected drugs
+- **HLA carrier status** (positive alleles only)
+- **Elevated health risks** (condition + risk level + brief note, no raw SNPs)
+- **Drug sensitivities** (drug + sensitivity level)
+- **Nutrition flags** (nutrient concerns from genetic variants)
+- **Abnormal lab/checkup indicators** (latest values only: name, value, unit, flag)
+- **Medical findings** — ALL examination results (CT, ultrasound, X-ray, MRI, ECG, physical exam, functional tests, etc.) grouped by category, including both normal and abnormal findings, with original language preserved
+- **Medical findings summary** — total and abnormal counts per category
+- **Suggested focus areas** (auto-generated from cross-referencing genomic + clinical + imaging data)
+
+```json
+{
+  "_format": "gene2ai-health-profile-v1",
+  "_description": "Compact health profile from Gene2AI. Contains interpretive conclusions only.",
+  "dataCoverage": { "genomicMarkers": 324, "labIndicators": 247, "medicalFindings": 18, ... },
+  "genomicHighlights": {
+    "apoe": "APOE ε3/ε4 — Increased (1 copy of ε4)",
+    "cyp450": [{ "gene": "CYP2D6", "status": "Normal Metabolizer", "affectedDrugs": [] }],
+    "elevatedRisks": [{ "condition": "Alzheimer's Disease", "risk": "elevated", "note": "..." }],
+    "drugSensitivities": [{ "drug": "Warfarin", "sensitivity": "increased", "note": "..." }],
+    "nutritionFlags": [{ "nutrient": "Vitamin D", "note": "..." }]
+  },
+  "abnormalIndicators": [{ "name": "LDL Cholesterol", "value": 3.8, "unit": "mmol/L", "flag": "high" }],
+  "medicalFindings": {
+    "imaging": [
+      { "type": "imaging", "examType": "CT", "bodyPart": "Liver", "finding": "肝脏密度减低", "conclusion": "Mild fatty liver", "severity": "mild", "clinicalSignificance": "Common finding", "recommendation": "Lifestyle modification", "date": "2026-01-15" },
+      { "type": "imaging", "examType": "Ultrasound", "bodyPart": "Thyroid", "finding": "右叶小结节", "conclusion": "Thyroid nodule, likely benign", "severity": "mild", "recommendation": "Follow-up in 12 months", "date": "2026-01-15" }
+    ],
+    "physical_exam": [
+      { "type": "physical_exam", "examType": "General", "bodyPart": "Heart", "finding": "心律齐，无杂音", "conclusion": "Normal cardiac exam", "severity": "normal", "date": "2026-01-15" }
+    ],
+    "functional_test": [
+      { "type": "functional_test", "examType": "ECG", "bodyPart": "Heart", "finding": "窦性心律", "conclusion": "Normal ECG", "severity": "normal", "date": "2026-01-15" }
+    ]
+  },
+  "medicalFindingsSummary": {
+    "total": 18, "abnormal": 4,
+    "byCategory": {
+      "imaging": { "total": 8, "abnormal": 3 },
+      "physical_exam": { "total": 6, "abnormal": 0 },
+      "functional_test": { "total": 4, "abnormal": 1 }
+    }
+  },
+  "suggestedFocusAreas": ["Alzheimer's risk management (APOE ε4 carrier)", ...]
+}
+```
+
+> **This profile is designed to be cached and reused across conversations.** It contains no raw genetic data (no rs-IDs, no genotypes, no SNP details), so it is safe for agent memory and cross-session reference. Medical findings include ALL examination results (both normal and abnormal) grouped by category, with findings sorted by date (newest first) within each category. The `finding` field preserves the original language from the medical report (Chinese or English). When the user needs specific genetic details, drill down using the endpoints below.
 
 ### Summary Overview
 
@@ -495,15 +554,34 @@ If you receive a `token_expired` or `key_revoked` error, instruct the user to vi
 
 ## Recommended Query Strategy for Agents
 
-1. **Start with risk-overview**: Call `/health-data/risk-overview` first to get a comprehensive picture — elevated genomic risks, abnormal lab values, and cross-references between them.
+### Data Tiers
 
-2. **Drill down by subcategory**: Use `/health-data/full?category=genomic&subcategory=cyp450` to get specific data (e.g., CYP450 for medication questions, APOE for Alzheimer's questions).
+Gene2AI organizes health data into three tiers for efficient agent usage:
 
-3. **Cross-reference when relevant**: When discussing lab results, check `/health-data/genomic-links/{code}` to see if there are related genetic factors (e.g., high LDL → check for LDLR variants).
+| Tier | Endpoint | Size | Contains | Persistence |
+|------|----------|------|----------|-------------|
+| **Tier 1: Health Profile** | `/health-data/profile` | ~2-4KB | Conclusions only (risk levels, metabolizer status, abnormal flags) | **Cache and reuse** across sessions |
+| **Tier 2: Detailed Records** | `/health-data/full`, `/health-data/risk-overview` | ~50-500KB | Specific genotypes, SNPs, lab values, cross-references | Use per-session, do not persist |
+| **Tier 3: Raw Data** | Website only (gene2.ai) | MB+ | Original genetic files, full analysis JSON | Never enters agent context |
 
-4. **Use grouped format for overviews**: `/health-data/full?format=grouped` organizes all data by category and subcategory, ideal for building comprehensive health summaries.
+### Recommended Flow
 
-5. **Cache the summary**: Call `/health-data/summary` to understand what data is available before making detailed queries.
+1. **Start with the Health Profile**: Call `/health-data/profile` to get a compact overview. This is enough for most health-aware decisions (diet, exercise, general wellness questions). **Cache this in agent memory** for cross-session awareness.
+
+2. **Drill down only when needed**: When the user asks a specific question (e.g., "What's my CYP2D6 genotype exactly?", "Show me my APOE SNPs"), call `/health-data/full?category=genomic&subcategory=cyp450` to get detailed records.
+
+3. **Use risk-overview for comprehensive analysis**: Call `/health-data/risk-overview` when the user wants a full risk assessment combining genomic and lab data with cross-references.
+
+4. **Cross-reference when relevant**: When discussing lab results, check `/health-data/genomic-links/{code}` to see if there are related genetic factors (e.g., high LDL → check for LDLR variants).
+
+5. **Use grouped format for overviews**: `/health-data/full?format=grouped` organizes all data by category and subcategory, ideal for building comprehensive health summaries.
+
+### Data Handling Guidelines
+
+- **Tier 1 (Health Profile)**: Safe to cache, memorize, and reference across conversations. Contains no raw genetic data that could be used to reconstruct DNA information. Includes all medical findings (CT, ultrasound, X-ray, ECG, physical exam, etc.) as conclusion-level text grouped by category.
+- **Tier 2 (Detailed Records)**: Use within the current conversation only. Contains specific genotypes and lab values that are more sensitive.
+- When in doubt about which tier to use, **start with Tier 1**. The health profile's `suggestedFocusAreas` field will guide you on what to investigate further.
+- The `medicalFindings` object groups all examination results by type (imaging, physical_exam, functional_test, clinical_notes). Each finding includes `examType` (CT/Ultrasound/X-ray/ECG/etc.), `bodyPart`, `finding` (original language), `conclusion`, `severity` (normal/mild/moderate/severe), and `date`. Findings within each category are sorted by date, newest first.
 
 ---
 
@@ -527,4 +605,4 @@ If you receive a `token_expired` or `key_revoked` error, instruct the user to vi
 
 9. **Do NOT give medical advice**: When reporting abnormal values, provide context but always recommend consulting a healthcare professional.
 
-10. **Respect privacy**: Do not log, cache, or store any health data locally on the agent machine.
+10. **Data tiering**: Use the Health Profile (`/health-data/profile`) as the default data source. Only fetch detailed records when the user asks specific questions that require genotype-level or lab-value-level detail. The Health Profile is designed to be cached across sessions; detailed records should be treated as ephemeral.
