@@ -1,7 +1,7 @@
 ---
 name: gene2ai
 description: Your personal health data hub for AI agents. Query genomic insights, upload medical documents, record daily health metrics, explore genomic-lab cross-references, receive personalized daily health briefings, and get contextual health advice woven into everyday conversations — all powered by your actual genetic and clinical data.
-version: 4.0.0
+version: 3.3.0
 metadata:
   openclaw:
     requires:
