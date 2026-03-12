@@ -1,7 +1,7 @@
 ---
 name: gene2ai
 description: Your personal health data hub for AI agents. Query genomic insights, upload medical documents, record daily health metrics, explore genomic-lab cross-references, receive personalized daily health briefings, and get contextual health advice woven into everyday conversations — all powered by your actual genetic and clinical data.
-version: 3.3.0
+version: 3.3.1
 metadata:
   openclaw:
     requires:
@@ -59,7 +59,7 @@ Use this skill whenever the user:
 - The conversation touches on **family planning or pregnancy** — check carrier status markers
 - The conversation touches on **medical appointments or test results** — cross-reference with genomic data
 
-> **How it works**: You do NOT need the user to explicitly ask about their genes. Whenever the conversation naturally involves health-adjacent topics, silently call `/health-data/profile` (or use cached data) and weave relevant genetic insights into your response. This is the core value of Gene2AI — the user's health data becomes part of your awareness, not something they have to remember to ask about.
+> **How it works**: When the conversation naturally involves health-adjacent topics, you may reference the user's health profile to provide personalized advice. **On the first occasion**, ask the user for permission: "I have access to your Gene2AI health profile — would you like me to reference your genetic and clinical data when health topics come up in our conversations?" Once the user confirms, you can proactively reference their profile in future health-related conversations within the same session without asking again. If the user declines, only use Gene2AI data when explicitly requested.
 
 ### Daily Health Briefing (Active — Scheduled)
 - The user asks to set up daily health check-ins or briefings
@@ -624,7 +624,7 @@ Gene2AI organizes health data into three tiers for efficient agent usage:
 
 10. **Data tiering**: Use the Health Profile (`/health-data/profile`) as the default data source. Only fetch detailed records when the user asks specific questions that require genotype-level or lab-value-level detail. The Health Profile is designed to be cached across sessions; detailed records should be treated as ephemeral.
 
-11. **Contextual advisory**: Proactively reference the user's health data in everyday conversations (Part 7). You don't need to wait for the user to ask about their genes — if the topic is health-adjacent, silently consult their profile and weave in relevant insights.
+11. **Contextual advisory with consent**: When health topics come up in conversation, offer to reference the user's health profile (Part 7). Obtain per-session consent before proactively referencing health data. Once confirmed, weave relevant insights naturally into health-adjacent conversations.
 
 12. **Daily briefing**: When the daily briefing cron fires (Part 8), generate content entirely from the user's actual data. Never use fixed templates. The briefing and check-in prompts should feel different every day because they respond to the user's evolving health picture.
 
@@ -632,11 +632,20 @@ Gene2AI organizes health data into three tiers for efficient agent usage:
 
 ## Part 7: Contextual Health Advisory
 
-This is the most important capability of Gene2AI. You should act as the user's **health-aware layer** — silently consulting their health profile whenever the conversation touches health-adjacent topics, and naturally weaving relevant insights into your response.
+This is the most important capability of Gene2AI. You act as the user's **health-aware layer** — referencing their health profile when the conversation touches health-adjacent topics, and naturally weaving relevant insights into your response.
 
-### How It Works
+### Consent and Scope
 
-1. When the conversation touches any health-related topic (see trigger list in "When to Use"), silently call `GET /health-data/profile` if you don't already have the data cached in this session.
+The user has explicitly installed the Gene2AI skill and configured their API key, which signals their intent to receive personalized health insights. However, because health data is sensitive, you must still obtain **per-session consent** before proactively referencing it:
+
+1. **First health-adjacent topic in a session**: Before fetching or referencing health data, ask the user: "I can reference your Gene2AI health profile to give you personalized advice on this — would you like me to do that?"
+2. **If the user confirms**: You may reference their health profile for the rest of this session whenever health topics come up, without asking again each time.
+3. **If the user declines**: Only use Gene2AI data when the user explicitly asks (e.g., "check my genes for this", "what does my health profile say").
+4. **Daily briefing sessions**: Consent is implied because the user explicitly set up the scheduled briefing.
+
+### How It Works (After Consent)
+
+1. When the conversation touches any health-related topic (see trigger list in "When to Use"), call `GET /health-data/profile` if you don't already have the data cached in this session.
 2. Identify which fields in the health profile are relevant to the current topic.
 3. Weave the insight naturally into your response — do not lead with "According to your genetic data..." or dump the whole profile.
 4. Always add a brief disclaimer when the advice touches medical decisions.
